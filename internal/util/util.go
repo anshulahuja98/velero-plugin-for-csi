@@ -120,6 +120,22 @@ func IsPVCBackedUpByRestic(pvcNamespace, pvcName string, podClient corev1client.
 	return false, nil
 }
 
+// GetVolumeSnapshotClassFromAnnotationsForStorageClass returns a VolumeSnapshotClass for the supplied volume provisioner/ driver name from the annotation of the backup
+func GetVolumeSnapshotClassFromAnnotationsForStorageClass(backup *velerov1api.Backup, provisioner string, snapshotClient snapshotter.SnapshotV1Interface) (*snapshotv1api.VolumeSnapshotClass, error) {
+	print("entering GetVolumeSnapshotClassFromAnnotationsForStorageClass")
+	snapshotClasses, err := snapshotClient.VolumeSnapshotClasses().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, errors.Wrap(err, "error listing volumesnapshot classes")
+	}
+	for _, sc := range snapshotClasses.Items {
+		if backup.ObjectMeta.Annotations[provisioner] == sc.ObjectMeta.Name {
+			return &sc, nil
+		}
+	}
+	// If no snapshot class is sent for provider in backup annotations, rely on old method of selecting by label.
+	return GetVolumeSnapshotClassForStorageClass(provisioner, snapshotClient)
+}
+
 // GetVolumeSnapshotClassForStorageClass returns a VolumeSnapshotClass for the supplied volume provisioner/ driver name.
 func GetVolumeSnapshotClassForStorageClass(provisioner string, snapshotClient snapshotter.SnapshotV1Interface) (*snapshotv1api.VolumeSnapshotClass, error) {
 	snapshotClasses, err := snapshotClient.VolumeSnapshotClasses().List(context.TODO(), metav1.ListOptions{})
