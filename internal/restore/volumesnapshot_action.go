@@ -18,12 +18,15 @@ package restore
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	snapshotv1api "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
 	core_v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -74,11 +77,27 @@ func (p *VolumeSnapshotRestoreItemAction) Execute(input *velero.RestoreItemActio
 		vs.SetNamespace(val)
 	}
 
-	_, snapClient, err := util.GetClients()
+	client, snapClient, err := util.GetClients()
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
+	const SnapshotMappingAnnotation = "clusterbackup.dataprotection.microsoft.com/snapshotmapping"
+	snapshotMapping, snapshotMappingExists := input.Restore.Annotations[SnapshotMappingAnnotation]
+
+	if snapshotMappingExists && util.IsVolumeSnapshotExists(&vs, snapClient.SnapshotV1()) {
+
+		// If by any scenario cleanup of VS and VSC is not done, we forcefully cleanup
+		// Then recreate VS & VSC with new mapped snapshot handle.
+		// This is to ensure that we don't have any stale VS & VSC objects in the cluster.
+
+		// For snapshots taken outside of velero, we won't have an entry in snapshotMapping
+		// Hence we won't end up deleting them by mistake.
+		err = snapClient.SnapshotV1().VolumeSnapshots(vs.Namespace).Delete(context.TODO(), vs.Name, metav1.DeleteOptions{})
+		if err != nil && !apierrors.IsNotFound(err) {
+			return nil, errors.Wrapf(err, "failed to delete VolumeSnapshot %s/%s", vs.Namespace, vs.Name)
+		}
+	}
 	if !util.IsVolumeSnapshotExists(&vs, snapClient.SnapshotV1()) {
 		snapHandle, exists := vs.Annotations[util.VolumeSnapshotHandleAnnotation]
 		if !exists {
@@ -93,6 +112,28 @@ func (p *VolumeSnapshotRestoreItemAction) Execute(input *velero.RestoreItemActio
 		p.Log.Debugf("Set VolumeSnapshotContent %s/%s DeletionPolicy to Retain to make sure VS deletion in namespace will not delete Snapshot on cloud provider.",
 			vs.Namespace, vs.Name)
 
+		if snapshotMappingExists {
+			split := strings.Split(snapshotMapping, "/")
+			configMap, err := client.CoreV1().ConfigMaps(split[0]).Get(context.Background(), split[1], metav1.GetOptions{})
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to get snapshot mapping configmap %s/%s", split[0], split[1])
+			}
+
+			data := configMap.Data["snapshotmapping"]
+			dataMap := make(map[string]map[string]string)
+			err = json.Unmarshal([]byte(data), &dataMap)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to deserialize snapshot mapping configmap %s/%s", split[0], split[1])
+			}
+
+			snapHandleNew, ok := dataMap[strings.ToLower(csiDriverName)][snapHandle]
+			if ok {
+				p.Log.Infof("Found snapshot handle mapping for %s, mapping this to %s", snapHandle, snapHandleNew)
+				snapHandle = snapHandleNew
+			} else {
+				p.Log.Warnf("No snapshot handle mapping found for %s, using original snapshot handle", snapHandle)
+			}
+		}
 		// TODO: generated name will be like velero-velero-something. Fix that.
 		vsc := snapshotv1api.VolumeSnapshotContent{
 			ObjectMeta: metav1.ObjectMeta{
