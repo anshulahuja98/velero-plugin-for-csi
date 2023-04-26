@@ -84,13 +84,13 @@ func (p *PVCBackupItemAction) Execute(item runtime.Unstructured, backup *velerov
 		return item, nil, nil
 	}
 
-	// Do nothing if restic is used to backup this PV
-	isResticUsed, err := util.IsPVCBackedUpByRestic(pvc.Namespace, pvc.Name, client.CoreV1(), boolptr.IsSetToTrue(backup.Spec.DefaultVolumesToRestic))
+	// Do nothing if FS uploader is used to backup this PV
+	isFSUploaderUsed, err := util.IsPVCDefaultToFSBackup(pvc.Namespace, pvc.Name, client.CoreV1(), boolptr.IsSetToTrue(backup.Spec.DefaultVolumesToFsBackup))
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
-	if isResticUsed {
-		p.Log.Infof("Skipping  PVC %s/%s, PV %s will be backed up using restic", pvc.Namespace, pvc.Name, pv.Name)
+	if isFSUploaderUsed {
+		p.Log.Infof("Skipping  PVC %s/%s, PV %s will be backed up using FS uploader", pvc.Namespace, pvc.Name, pv.Name)
 		return item, nil, nil
 	}
 
@@ -135,12 +135,16 @@ func (p *PVCBackupItemAction) Execute(item runtime.Unstructured, backup *velerov
 	}
 	p.Log.Infof("Created volumesnapshot %s", fmt.Sprintf("%s/%s", upd.Namespace, upd.Name))
 
-	vals := map[string]string{
+	labels := map[string]string{
 		util.VolumeSnapshotLabel:    upd.Name,
 		velerov1api.BackupNameLabel: backup.Name,
 	}
-	util.AddAnnotations(&pvc.ObjectMeta, vals)
-	util.AddLabels(&pvc.ObjectMeta, vals)
+
+	annotations := labels
+	annotations[util.MustIncludeAdditionalItemAnnotation] = "true"
+
+	util.AddAnnotations(&pvc.ObjectMeta, annotations)
+	util.AddLabels(&pvc.ObjectMeta, labels)
 
 	additionalItems := []velero.ResourceIdentifier{
 		{
