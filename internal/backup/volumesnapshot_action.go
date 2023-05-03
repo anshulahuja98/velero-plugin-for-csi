@@ -90,7 +90,7 @@ func (p *VolumeSnapshotBackupItemAction) Execute(item runtime.Unstructured, back
 
 	p.Log.Infof("Getting VolumesnapshotContent for Volumesnapshot %s/%s", vs.Namespace, vs.Name)
 
-	vsc, err := util.GetVolumeSnapshotContentForVolumeSnapshot(&vs, snapshotClient.SnapshotV1(), p.Log, backupOngoing)
+	vsc, err := util.GetVolumeSnapshotContentForVolumeSnapshot(&vs, snapshotClient.SnapshotV1(), p.Log, false)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
@@ -158,3 +158,11 @@ func (p *VolumeSnapshotBackupItemAction) Execute(item runtime.Unstructured, back
 
 	return &unstructured.Unstructured{Object: vsMap}, additionalItems, nil
 }
+
+func (p *VolumeSnapshotBackupItemAction) Progress(operationID string, backup *velerov1api.Backup) (velero.OperationProgress, error) {
+	progress := velero.OperationProgress{}
+	
+	// in VS - exit when VSC is created.
+	// in VSC - update both vsc and Vs in finalize state.
+	// in VSC return opereation ID which is VSC itself maybe.
+	// and while tracking in VSC - put label/annotataoins on VS/ VSC. And finally return.

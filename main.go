@@ -31,7 +31,7 @@ func main() {
 		RegisterBackupItemAction("velero.io/csi-pvc-backupper", newPVCBackupItemAction).
 		RegisterBackupItemAction("velero.io/csi-volumesnapshot-backupper", newVolumeSnapshotBackupItemAction).
 		RegisterBackupItemAction("velero.io/csi-volumesnapshotclass-backupper", newVolumesnapshotClassBackupItemAction).
-		RegisterBackupItemAction("velero.io/csi-volumesnapshotcontent-backupper", newVolumeSnapContentBackupItemAction).
+		RegisterBackupItemActionV2("velero.io/csi-volumesnapshotcontent-backupper", newVolumeSnapContentBackupItemAction).
 		RegisterRestoreItemAction("velero.io/csi-pvc-restorer", newPVCRestoreItemAction).
 		RegisterRestoreItemAction("velero.io/csi-volumesnapshot-restorer", newVolumeSnapshotRestoreItemAction).
 		RegisterRestoreItemAction("velero.io/csi-volumesnapshotclass-restorer", newVolumeSnapshotClassRestoreItemAction).

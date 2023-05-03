@@ -301,3 +301,12 @@ func HasBackupLabel(o *metav1.ObjectMeta, backupName string) bool {
 	}
 	return o.Labels[velerov1api.BackupNameLabel] == label.GetValidName(backupName)
 }
+
+
+func SplitOperationID(operationID string) (string, string, error) {
+	parts := strings.Split(operationID, "/")
+	if len(parts) != 2 {
+		return "", "", errors.Errorf("invalid operation ID %q", operationID)
+	}
+	return parts[0], parts[1], nil
+}
